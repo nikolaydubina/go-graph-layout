@@ -15,6 +15,10 @@ However, given this is very complex task this is work in progress.
 - [x] Gravity force
 - [x] Spring force
 - [ ] Kozo Sugiyama Magnetic Force
+- [ ] Metro Style edges
+- [ ] Ports for edges
+- [ ] Spline edges
+- [ ] Collision avoidance (dot) edge path algorithm
 
 ## Contributions
 
