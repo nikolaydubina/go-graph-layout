@@ -2,7 +2,7 @@
 
 This module provides algorithms for graph visualization in native Go.
 As of 2021-11-20, virtually all graph visualization algorithms are bindings to Graphviz dot code which is in C.
-This module attempts to provide implementation of latest and bets graph visualization algorithms from scratch in Go.
+This module attempts to provide implementation of latest and best graph visualization algorithms from scratch in Go.
 However, given this is very complex task this is work in progress.
 
 ## Features
