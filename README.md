@@ -29,6 +29,6 @@ Yes please. These algorithms are hard. If you can, help to finish implementing a
 - [Wiki Layered Graph Drawing](https://en.wikipedia.org/wiki/Layered_graph_drawing)
 - ["Handbook of Graph Drawing and Visualization"](https://cs.brown.edu/people/rtamassi/gdhandbook/), Roberto Tamassia, Brown, Ch.13
 - ["A Technique for Drawing Directed Graphs"](https://ieeexplore.ieee.org/document/221135), Emden R. Gansner Eleftherios Koutsofios Stephen C. North Kiem-Phong Vo, AT&T Bell Laboratories, 1993
-- ["Fast and Simple Horizontal Coordinate Assignment"](https://link.springer.com/content/pdf/10.1007/3-540-45848-4_3.pdf), U. Brandes, Boris Köpf
+- ["Fast and Simple Horizontal Coordinate Assignment"](https://link.springer.com/content/pdf/10.1007/3-540-45848-4_3.pdf), U. Brandes, Boris Köpf, 2002
 - "Methods for visual understanding of hierarchical system structures", Sugiyama, Kozo; Tagawa, Shôjirô; Toda, Mitsuhiko, 1981
 - "Graph Drawing by the Magnetic Spring Model", Kozo Sugiyama, 1995
