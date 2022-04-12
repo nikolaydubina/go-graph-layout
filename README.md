@@ -22,7 +22,9 @@ However, given this is very complex task this is work in progress.
 
 ## Contributions
 
-Yes please. These algorithms are hard. If you can, help to finish implementing any of above!
+Yes please. These algorithms are hard. If you can, help to finish implementing any of above! 
+
+If lots of contributions, I am ok to merge this into some org!
 
 ## References
 
