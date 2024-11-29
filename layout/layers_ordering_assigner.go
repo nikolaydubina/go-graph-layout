@@ -282,35 +282,42 @@ func (o RandomLayerOrderingOptimizer) Optimize(segments map[[2]uint64]bool, laye
 	}
 }
 
-// time: O(ntop ^ 2 * nbot ^ 2)
-// memory: O(1)
+// time: O(ntop * nbot * log(ntop))
+// memory: O(ntop)
 func numCrossingsBetweenLayers(segments map[[2]uint64]bool, ltop, lbottom []uint64) int {
-	count := 0
-
-	// e1 top is always to the left from e2 top
-	for idxE1T, e1t := range ltop {
-		for idxE1B, e1b := range lbottom {
-			if _, ok := segments[[2]uint64{e1t, e1b}]; !ok {
-				continue
-			}
-			for idxE2T := idxE1T + 1; idxE2T < len(ltop); idxE2T++ {
-				for idxE2B := 0; idxE2B < len(lbottom); idxE2B++ {
-					if _, ok := segments[[2]uint64{ltop[idxE2T], lbottom[idxE2B]}]; !ok {
-						continue
-					}
-
-					// e1   e2
-					//    x
-					// e2   e1
-					if idxE1B > idxE2B {
-						count++
-					}
-				}
+	sum := 0
+	bit := NewFenwickTree(len(ltop))
+	for i := len(lbottom) - 1; i >= 0; i-- {
+		node := lbottom[i]
+		for j := len(ltop) - 1; j >= 0; j-- {
+			neighbor := ltop[j]
+			if segments[[2]uint64{neighbor, node}] {
+				bit.Update(j+1, 1)
+				sum += bit.Query(j)
 			}
 		}
 	}
+	return sum
+}
 
-	return count
+type FenwickTree []int
+
+func NewFenwickTree(nbElements int) FenwickTree {
+	return make(FenwickTree, nbElements+1)
+}
+
+func (bit FenwickTree) Update(idx int, value int) {
+	for ; idx < len(bit); idx += idx & (-idx) {
+		bit[idx] += value
+	}
+}
+
+func (bit FenwickTree) Query(idx int) int {
+	sum := 0
+	for ; idx > 0; idx -= idx & (-idx) {
+		sum += bit[idx]
+	}
+	return sum
 }
 
 // time: O(?)
