@@ -2,6 +2,7 @@ package layout
 
 import (
 	"math"
+	"sort"
 )
 
 // "Fast and Simple Horizontal Coordinate Assignment" by Ulrik Brandes and Boris Kopf, 2002
@@ -28,6 +29,13 @@ func computeOrderedNeighbors(g LayeredGraph) Neighbors {
 		n.Down[e[0]] = append(n.Down[e[0]], e[1])
 		n.Up[e[1]] = append(n.Up[e[1]], e[0])
 	}
+	for _, d := range n.Down {
+		sort.Slice(d, func(i, j int) bool { return g.NodeYX[d[i]][1] < g.NodeYX[d[j]][1] })
+	}
+
+	for _, d := range n.Up {
+		sort.Slice(d, func(i, j int) bool { return g.NodeYX[d[i]][1] < g.NodeYX[d[j]][1] })
+	}
 
 	return n
 }
@@ -36,7 +44,7 @@ func (s BrandesKopfLayersNodesHorizontalAssigner) NodesHorizontalCoordinates(_ G
 	neighbors := computeOrderedNeighbors(g)
 	typeOneSegments := preprocessing(g, neighbors)
 	root, align := verticalAlignment(g, typeOneSegments, neighbors)
-	x := horizontalCompaction(g, root, align, s.Delta, neighbors)
+	x := horizontalCompaction(g, root, align, s.Delta)
 	// TODO: balancing by taking median for every node across 4 runs for each run as in algorithm
 	return x
 }
@@ -169,7 +177,7 @@ func placeBlock(g LayeredGraph, x map[uint64]int, root map[uint64]uint64, align 
 // the preceding blocks in the same class, plus minimum separation.
 // For each class, from top to bottom, we then compute the absolute coordinates
 // of its members by placing the class with minimum separation from previously placed classes.
-func horizontalCompaction(g LayeredGraph, root map[uint64]uint64, align map[uint64]uint64, delta int, n Neighbors) (x map[uint64]int) {
+func horizontalCompaction(g LayeredGraph, root map[uint64]uint64, align map[uint64]uint64, delta int) (x map[uint64]int) {
 	sink := map[uint64]uint64{}
 	shift := map[uint64]int{}
 	x = map[uint64]int{}
@@ -188,7 +196,6 @@ func horizontalCompaction(g LayeredGraph, root map[uint64]uint64, align map[uint
 	}
 
 	// class offsets
-	layers := g.Layers()
 	for i := 0; i < len(layers); i++ {
 		layer := layers[i]
 		vfirst := layer[0]
