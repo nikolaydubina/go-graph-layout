@@ -58,6 +58,9 @@ func (o WarfieldOrderingOptimizer) Optimize(g Graph, lg LayeredGraph) {
 			copyLayers(bestLayers, layers)
 		}
 		log.Printf("warfield ordering optimizer:\t epoch(%d)\t best(%d)\t current(%d)\n", t, bestN, N)
+		if N == 0 {
+			break
+		}
 	}
 
 	// store to graph
@@ -233,22 +236,18 @@ func (o SwitchAdjacentOrderingOptimizer) Optimize(segments map[[2]uint64]bool, l
 	for i := 0; i < (len(layers[y]) - 1); i++ {
 		j := i + 1
 
-		var ltop, lbottom []uint64
+		current := []uint64{layers[y][i], layers[y][j]}
+		swapped := []uint64{layers[y][j], layers[y][i]}
+		var currCrossings, swappedCrossings int
 		if downUp {
-			ltop = layers[y]
-			lbottom = layers[y+1]
+			currCrossings = numCrossingsBetweenLayers(segments, current, layers[y+1])
+			swappedCrossings = numCrossingsBetweenLayers(segments, swapped, layers[y+1])
 		} else {
-			ltop = layers[y-1]
-			lbottom = layers[y]
+			currCrossings = numCrossingsBetweenLayers(segments, layers[y-1], current)
+			swappedCrossings = numCrossingsBetweenLayers(segments, layers[y-1], swapped)
 		}
 
-		currCrossings := numCrossingsBetweenLayers(segments, ltop, lbottom)
-
-		// swap
-		layers[y][i], layers[y][j] = layers[y][j], layers[y][i]
-		swapCrossings := numCrossingsBetweenLayers(segments, ltop, lbottom)
-
-		if swapCrossings > currCrossings {
+		if swappedCrossings < currCrossings {
 			layers[y][i], layers[y][j] = layers[y][j], layers[y][i]
 		}
 	}
