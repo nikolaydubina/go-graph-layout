@@ -112,13 +112,13 @@ func verticalAlignment(g LayeredGraph, typeOneSegments map[[2]uint64]bool, n Nei
 
 	layers := g.Layers()
 	for i := range layers {
-		r := 0
+		r := -1
 		for _, v := range layers[i] {
 			upNeighbors := n.Up[v]
 			if d := len(upNeighbors); d > 0 {
-				for m := d / 2; m < ((d+1)/2) && (m < d); m++ {
-					u := upNeighbors[m]
+				for m := d / 2; m < ((d+1)/2); m++ {
 					if align[v] == v {
+						u := upNeighbors[m]
 						if !typeOneSegments[[2]uint64{u, v}] && r < g.NodeYX[u][1] {
 							align[u] = v
 							root[v] = root[u]
