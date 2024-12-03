@@ -18,8 +18,8 @@ func (l StraightEdgePathAssigner) UpdateGraphLayout(g Graph, lg LayeredGraph, al
 		for i, n := range nodes {
 			xy := allNodesXY[n]
 			path[i] = [2]int{
-				xy[0] + (g.Nodes[n].W / 2),
-				xy[1] + (g.Nodes[n].H / 2),
+				xy[0],
+				xy[1],
 			}
 		}
 
