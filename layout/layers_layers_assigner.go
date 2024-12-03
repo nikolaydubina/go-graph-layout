@@ -30,6 +30,10 @@ func maxNodeID(g Graph) uint64 {
 
 func assignLevels(g Graph) map[uint64][2]int {
 	nodeYX := make(map[uint64][2]int, len(g.Nodes))
+	neighbors := make(map[uint64][]uint64)
+	for e := range g.Edges {
+		neighbors[e[0]] = append(neighbors[e[0]], e[1])
+	}
 	for _, root := range g.Roots() {
 		nodeYX[root] = [2]int{0, 0}
 		for que := []uint64{root}; len(que) > 0; {
@@ -42,13 +46,11 @@ func assignLevels(g Graph) map[uint64][2]int {
 			}
 
 			// set max depth for each child
-			for e := range g.Edges {
-				if parent, child := e[0], e[1]; parent == p {
-					if l := nodeYX[parent][0] + 1; l > nodeYX[child][0] {
+			for _, child := range neighbors[p] {
+					if l := nodeYX[p][0] + 1; l > nodeYX[child][0] {
 						nodeYX[child] = [2]int{l, 0}
 					}
 					que = append(que, child)
-				}
 			}
 		}
 	}

@@ -13,10 +13,30 @@ type BrandesKopfLayersNodesHorizontalAssigner struct {
 	Delta int // distance between nodes, including fake ones
 }
 
+type Neighbors struct {
+	Up   map[uint64][]uint64
+	Down map[uint64][]uint64
+}
+
+func computeOrderedNeighbors(g LayeredGraph) Neighbors {
+	n := Neighbors{
+		Up:   make(map[uint64][]uint64),
+		Down: make(map[uint64][]uint64),
+	}
+
+	for e := range g.Segments {
+		n.Down[e[0]] = append(n.Down[e[0]], e[1])
+		n.Up[e[1]] = append(n.Up[e[1]], e[0])
+	}
+
+	return n
+}
+
 func (s BrandesKopfLayersNodesHorizontalAssigner) NodesHorizontalCoordinates(_ Graph, g LayeredGraph) map[uint64]int {
-	typeOneSegments := preprocessing(g)
-	root, align := verticalAlignment(g, typeOneSegments)
-	x := horizontalCompaction(g, root, align, s.Delta)
+	neighbors := computeOrderedNeighbors(g)
+	typeOneSegments := preprocessing(g, neighbors)
+	root, align := verticalAlignment(g, typeOneSegments, neighbors)
+	x := horizontalCompaction(g, root, align, s.Delta, neighbors)
 	// TODO: balancing by taking median for every node across 4 runs for each run as in algorithm
 	return x
 }
@@ -25,21 +45,22 @@ func (s BrandesKopfLayersNodesHorizontalAssigner) NodesHorizontalCoordinates(_ G
 // Type 1 conflicts arise when a non-inner segment (normal edge) crosses an inner segment (edge between two fake nodes).
 // The algorithm traverses Layers from left to right (index l) while maintaining the upper neighbors,
 // v(i)_k0 and v(i)_k1, of the two closest inner Segments.
-func preprocessing(g LayeredGraph) (typeOneSegments map[[2]uint64]bool) {
+func preprocessing(g LayeredGraph, n Neighbors) (typeOneSegments map[[2]uint64]bool) {
 	typeOneSegments = map[[2]uint64]bool{}
 
-	for i := range g.Layers() {
-		if i == (len(g.Layers()) - 1) {
+	layers := g.Layers()
+	for i := range layers {
+		if i == (len(layers) - 1) {
 			continue
 		}
-		nextLayer := g.Layers()[i+1]
+		nextLayer := layers[i+1]
 
 		k0 := 0
 		l := 0
 
 		for l1, v := range nextLayer {
 			var upperNeighborInnerSegment uint64
-			for _, u := range g.UpperNeighbors(v) {
+			for _, u := range n.Up[v] {
 				if g.IsInnerSegment([2]uint64{u, v}) {
 					upperNeighborInnerSegment = u
 					break
@@ -47,12 +68,12 @@ func preprocessing(g LayeredGraph) (typeOneSegments map[[2]uint64]bool) {
 			}
 
 			if (l1 == (len(nextLayer) - 1)) || upperNeighborInnerSegment != 0 {
-				k1 := len(g.Layers()[i]) - 1
+				k1 := len(layers[i]) - 1
 				if upperNeighborInnerSegment != 0 {
 					k1 = g.NodeYX[upperNeighborInnerSegment][1]
 				}
 				for l <= l1 {
-					for k, u := range g.UpperNeighbors(nextLayer[l]) {
+					for k, u := range n.Up[nextLayer[l]] {
 						if k < k0 || k > k1 {
 							typeOneSegments[[2]uint64{u, v}] = true
 						}
@@ -72,7 +93,7 @@ func preprocessing(g LayeredGraph) (typeOneSegments map[[2]uint64]bool) {
 // A maximal set of vertically aligned vertices is called a block, and we define the root of a block to be its topmost vertex.
 // Blocks are stored as cyclicly linked lists, each node has reference to its lower aligned neighbor and lowest refers to topmost.
 // Each node has additional reference to root of its block.
-func verticalAlignment(g LayeredGraph, typeOneSegments map[[2]uint64]bool) (root map[uint64]uint64, align map[uint64]uint64) {
+func verticalAlignment(g LayeredGraph, typeOneSegments map[[2]uint64]bool, n Neighbors) (root map[uint64]uint64, align map[uint64]uint64) {
 	root = make(map[uint64]uint64, len(g.NodeYX))
 	align = make(map[uint64]uint64, len(g.NodeYX))
 
@@ -81,10 +102,11 @@ func verticalAlignment(g LayeredGraph, typeOneSegments map[[2]uint64]bool) (root
 		align[v] = v
 	}
 
-	for i := range g.Layers() {
+	layers := g.Layers()
+	for i := range layers {
 		r := 0
-		for _, v := range g.Layers()[i] {
-			upNeighbors := g.UpperNeighbors(v)
+		for _, v := range layers[i] {
+			upNeighbors := n.Up[v]
 			if d := len(upNeighbors); d > 0 {
 				for m := d / 2; m < ((d+1)/2) && (m < d); m++ {
 					u := upNeighbors[m]
@@ -105,14 +127,14 @@ func verticalAlignment(g LayeredGraph, typeOneSegments map[[2]uint64]bool) (root
 }
 
 // part of Alg 3.
-func placeBlock(g LayeredGraph, x map[uint64]int, root map[uint64]uint64, align map[uint64]uint64, sink map[uint64]uint64, shift map[uint64]int, delta int, v uint64) {
+func placeBlock(g LayeredGraph, x map[uint64]int, root map[uint64]uint64, align map[uint64]uint64, sink map[uint64]uint64, shift map[uint64]int, delta int, v uint64, layers [][]uint64) {
 	if _, ok := x[v]; !ok {
 		x[v] = 0
 		flag := true
 		for w := v; flag; flag = v != w {
 			if g.NodeYX[w][1] > 0 {
-				u := root[g.Layers()[g.NodeYX[w][0]][g.NodeYX[w][1]-1]]
-				placeBlock(g, x, root, align, sink, shift, delta, u)
+				u := root[layers[g.NodeYX[w][0]][g.NodeYX[w][1]-1]]
+				placeBlock(g, x, root, align, sink, shift, delta, u, layers)
 				if sink[v] == v {
 					sink[v] = sink[u]
 				}
@@ -141,7 +163,7 @@ func placeBlock(g LayeredGraph, x map[uint64]int, root map[uint64]uint64, align 
 // the preceding blocks in the same class, plus minimum separation.
 // For each class, from top to bottom, we then compute the absolute coordinates
 // of its members by placing the class with minimum separation from previously placed classes.
-func horizontalCompaction(g LayeredGraph, root map[uint64]uint64, align map[uint64]uint64, delta int) (x map[uint64]int) {
+func horizontalCompaction(g LayeredGraph, root map[uint64]uint64, align map[uint64]uint64, delta int, n Neighbors) (x map[uint64]int) {
 	sink := map[uint64]uint64{}
 	shift := map[uint64]int{}
 	x = map[uint64]int{}
@@ -151,10 +173,11 @@ func horizontalCompaction(g LayeredGraph, root map[uint64]uint64, align map[uint
 		shift[v] = math.MaxInt
 	}
 
+	layers := g.Layers()
 	// root coordinates relative to sink
 	for v := range g.NodeYX {
 		if root[v] == v {
-			placeBlock(g, x, root, align, sink, shift, delta, v)
+			placeBlock(g, x, root, align, sink, shift, delta, v, layers)
 		}
 	}
 
