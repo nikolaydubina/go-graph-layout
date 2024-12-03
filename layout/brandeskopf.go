@@ -131,7 +131,8 @@ func placeBlock(g LayeredGraph, x map[uint64]int, root map[uint64]uint64, align 
 	if _, ok := x[v]; !ok {
 		x[v] = 0
 		flag := true
-		for w := v; flag; flag = v != w {
+		w := v
+		for ; flag; flag = v != w {
 			if g.NodeYX[w][1] > 0 {
 				u := root[layers[g.NodeYX[w][0]][g.NodeYX[w][1]-1]]
 				placeBlock(g, x, root, align, sink, shift, delta, u, layers)
@@ -149,6 +150,11 @@ func placeBlock(g LayeredGraph, x map[uint64]int, root map[uint64]uint64, align 
 				}
 			}
 			w = align[w]
+		}
+		for align[w] != v {
+			w = align[w]
+			x[w] = x[v]
+			sink[w] = sink[v]
 		}
 	}
 }
@@ -181,12 +187,43 @@ func horizontalCompaction(g LayeredGraph, root map[uint64]uint64, align map[uint
 		}
 	}
 
+	// class offsets
+	layers := g.Layers()
+	for i := 0; i < len(layers); i++ {
+		layer := layers[i]
+		vfirst := layer[0]
+		if sink[vfirst] == vfirst {
+			if shift[sink[vfirst]] == math.MaxInt {
+				shift[sink[vfirst]] = 0
+			}
+			j := i
+			k := 0
+			for {
+				v := layers[j][k]
+
+				for align[v] != root[v] {
+					v = align[v]
+					j++
+					if g.NodeYX[v][1] > 0 {
+						u := layers[g.NodeYX[v][0]][g.NodeYX[v][1]-1]
+						shifted := shift[sink[v]] + x[v] - (x[u] + delta)
+						if shifted < shift[sink[u]] {
+							shift[sink[u]] = shifted
+						}
+					}
+				}
+				k = g.NodeYX[v][1] + 1
+
+				if k > len(layers[j])-1 || sink[v] != sink[layers[j][k]] {
+					break
+				}
+			}
+		}
+	}
+
 	// absolute coordinates
 	for v := range g.NodeYX {
-		x[v] = x[root[v]]
-		if s := shift[sink[root[v]]]; s < math.MaxInt {
-			x[v] += s
-		}
+		x[v]+= shift[sink[v]]
 	}
 
 	return x
