@@ -1,6 +1,7 @@
 package layout
 
 import (
+	"fmt"
 	"math"
 	"sort"
 )
@@ -61,12 +62,19 @@ func (s BrandesKopfLayersNodesHorizontalAssigner) NodesHorizontalCoordinates(_ G
 		maxX: math.MinInt,
 	}
 	for _, v := range xTL {
-		if resTL.minX < v {
+		if v < resTL.minX {
 			resTL.minX = v
 		}
-		if resTL.maxX > v {
+		if v > resTL.maxX {
 			resTL.maxX = v
 		}
+	}
+	if resTL.maxX == math.MaxInt {
+		fmt.Println("RESTL MAX")
+	}
+	if resTL.minX == math.MinInt {
+		fmt.Println("RESTL MIN")
+
 	}
 
 	dirTR := TopRight{}
@@ -78,12 +86,18 @@ func (s BrandesKopfLayersNodesHorizontalAssigner) NodesHorizontalCoordinates(_ G
 		maxX: math.MinInt,
 	}
 	for _, v := range xTR {
-		if resTR.minX < v {
+		if v < resTR.minX {
 			resTR.minX = v
 		}
-		if resTR.maxX > v {
+		if v > resTR.maxX {
 			resTR.maxX = v
 		}
+	}
+	if resTR.maxX == math.MaxInt {
+		fmt.Println("RESTR MAX")
+	}
+	if resTR.minX == math.MinInt {
+		fmt.Println("RESTR MIN")
 	}
 
 	best := resTL
@@ -94,12 +108,11 @@ func (s BrandesKopfLayersNodesHorizontalAssigner) NodesHorizontalCoordinates(_ G
 	shiftTL := best.minX - resTL.minX
 	shiftTR := best.maxX - resTR.maxX
 
-
 	x := make(map[uint64]int, len(xTL))
 	for n := range g.NodeYX {
 		tl := xTL[n] + shiftTL
 		tr := xTR[n] + shiftTR
-		x[n] = tl + tr / 2
+		x[n] = (tl + tr) / 2
 	}
 
 	// TODO: balancing by taking median for every node across 4 runs for each run as in algorithm
@@ -401,7 +414,7 @@ func (s TopRight) horizontalCompaction(g LayeredGraph, root map[uint64]uint64, a
 	// class offsets
 	for i := 0; i < len(layers); i++ {
 		layer := layers[i]
-		vfirst := layer[0]
+		vfirst := layer[len(layer)-1] // changed
 		if sink[vfirst] == vfirst {
 			if shift[sink[vfirst]] == math.MinInt {
 				shift[sink[vfirst]] = 0
@@ -416,7 +429,7 @@ func (s TopRight) horizontalCompaction(g LayeredGraph, root map[uint64]uint64, a
 					j++
 					if g.NodeYX[v][1] < len(layers[j])-1 { // changed
 						u := layers[g.NodeYX[v][0]][g.NodeYX[v][1]+1]     // changed
-						shifted := shift[sink[v]] - x[v] + (x[u] + delta) // changed
+						shifted := shift[sink[v]] + x[v] - (x[u] - delta) // changed
 						if shifted > shift[sink[u]] {                     // changed
 							shift[sink[u]] = shifted
 						}
