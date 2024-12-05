@@ -43,17 +43,17 @@ func (l SugiyamaLayersStrategyGraphLayout) UpdateGraphLayout(g Graph) {
 		allNodesXY[n] = [2]int{nodeX[n], nodeY[n]}
 	}
 
+	// export coordinates for edges
+	l.EdgePathAssigner(g, lg, allNodesXY)
+
 	// export coordinates to real nodes
 	for n, node := range g.Nodes {
 		g.Nodes[n] = Node{
-			XY: [2]int{nodeX[n], nodeY[n]},
+			XY: [2]int{nodeX[n] - node.W/2, nodeY[n] - node.H/2},
 			W:  node.W,
 			H:  node.H,
 		}
 	}
-
-	// export coordinates for edges
-	l.EdgePathAssigner(g, lg, allNodesXY)
 
 	l.CycleRemover.Restore(g)
 }

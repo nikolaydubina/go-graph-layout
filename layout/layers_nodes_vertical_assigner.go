@@ -28,15 +28,8 @@ func (s BasicNodesVerticalCoordinatesAssigner) NodesVerticalCoordinates(g Graph,
 	yOffset := 0
 	for i, nodes := range layers {
 		for _, node := range nodes {
-			nodeH := s.FakeNodeHeight
-
-			// if not fake node, then set its actual height
-			if n, ok := g.Nodes[node]; ok {
-				nodeH = n.H
-			}
-
 			// put in the middle vertically
-			nodeY[node] = yOffset + ((layersHMax[i] - nodeH) / 2)
+			nodeY[node] = yOffset + (layersHMax[i]) / 2
 		}
 
 		// move to next layer

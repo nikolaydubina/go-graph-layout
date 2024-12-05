@@ -6,6 +6,7 @@ import (
 )
 
 // "Fast and Simple Horizontal Coordinate Assignment" by Ulrik Brandes and Boris Kopf, 2002
+// Modified with "Erratum" from 2020 by Ulrik Brandes, Julian Walter and Johannes Zink.
 // Computes horizontal coordinate in layered graph, given ordering within each layer.
 // Produces result such that neighbors are close and long edges cross Layers are straight.
 // Works on fully connected graphs.
@@ -40,13 +41,73 @@ func computeOrderedNeighbors(g LayeredGraph) Neighbors {
 	return n
 }
 
+type LayoutResult struct {
+	x          map[uint64]int
+	minX, maxX int
+}
+
+func (x LayoutResult) width() int {
+	return x.maxX - x.minX
+}
+
 func (s BrandesKopfLayersNodesHorizontalAssigner) NodesHorizontalCoordinates(_ Graph, g LayeredGraph) map[uint64]int {
 	neighbors := computeOrderedNeighbors(g)
 	typeOneSegments := preprocessing(g, neighbors)
-	root, align := verticalAlignment(g, typeOneSegments, neighbors)
-	x := horizontalCompaction(g, root, align, s.Delta)
-	// TODO: balancing by taking median for every node across 4 runs for each run as in algorithm
+
+	resTL := runAlgo(TopLeft{}, g, typeOneSegments, neighbors, s)
+	resTR := runAlgo(TopRight{}, g, typeOneSegments, neighbors, s)
+	resBL := runAlgo(BottomLeft{}, g, typeOneSegments, neighbors, s)
+	resBR := runAlgo(BottomRight{}, g, typeOneSegments, neighbors, s)
+
+	best := resTL
+	if resTR.width() < best.width() {
+		best = resTR
+	}
+	if resBL.width() < best.width() {
+		best = resBL
+	}
+	if resBR.width() < best.width() {
+		best = resBR
+	}
+
+	shiftTL := best.minX - resTL.minX
+	shiftTR := best.maxX - resTR.maxX
+	shiftBL := best.minX - resBL.minX
+	shiftBR := best.maxX - resBR.maxX
+
+	x := make(map[uint64]int, len(g.NodeYX))
+	place := make([]int, 4)
+	for n := range g.NodeYX {
+		place[0] = resTL.x[n] + shiftTL
+		place[1] = resTR.x[n] + shiftTR
+		place[2] = resBL.x[n] + shiftBL
+		place[3] = resBR.x[n] + shiftBR
+		sort.Ints(place)
+		x[n] = (place[1] + place[2]) / 2
+	}
+
 	return x
+}
+
+func runAlgo(dir singleDirAlgo, g LayeredGraph, typeOneSegments map[[2]uint64]bool, neighbors Neighbors, s BrandesKopfLayersNodesHorizontalAssigner) LayoutResult {
+	root, align := dir.verticalAlignment(g, typeOneSegments, neighbors)
+	x := dir.horizontalCompaction(g, root, align, s.Delta)
+
+	res := LayoutResult{
+		x:    x,
+		minX: math.MaxInt,
+		maxX: math.MinInt,
+	}
+	for _, v := range x {
+		if v < res.minX {
+			res.minX = v
+		}
+		if v > res.maxX {
+			res.maxX = v
+		}
+	}
+
+	return res
 }
 
 // Alg 1.
@@ -96,12 +157,20 @@ func preprocessing(g LayeredGraph, n Neighbors) (typeOneSegments map[[2]uint64]b
 	return typeOneSegments
 }
 
+type singleDirAlgo interface {
+	verticalAlignment(g LayeredGraph, typeOneSegments map[[2]uint64]bool, n Neighbors) (root map[uint64]uint64, align map[uint64]uint64)
+
+	horizontalCompaction(g LayeredGraph, root map[uint64]uint64, align map[uint64]uint64, delta int) (x map[uint64]int)
+}
+
+type TopLeft struct{}
+
 // Alg 2.
 // Obtain a leftmost alignment with upper neighbors.
 // A maximal set of vertically aligned vertices is called a block, and we define the root of a block to be its topmost vertex.
 // Blocks are stored as cyclicly linked lists, each node has reference to its lower aligned neighbor and lowest refers to topmost.
 // Each node has additional reference to root of its block.
-func verticalAlignment(g LayeredGraph, typeOneSegments map[[2]uint64]bool, n Neighbors) (root map[uint64]uint64, align map[uint64]uint64) {
+func (s TopLeft) verticalAlignment(g LayeredGraph, typeOneSegments map[[2]uint64]bool, n Neighbors) (root map[uint64]uint64, align map[uint64]uint64) {
 	root = make(map[uint64]uint64, len(g.NodeYX))
 	align = make(map[uint64]uint64, len(g.NodeYX))
 
@@ -116,7 +185,7 @@ func verticalAlignment(g LayeredGraph, typeOneSegments map[[2]uint64]bool, n Nei
 		for _, v := range layers[i] {
 			upNeighbors := n.Up[v]
 			if d := len(upNeighbors); d > 0 {
-				for m := d / 2; m < ((d+1)/2); m++ {
+				for m := d / 2; m < ((d + 1) / 2); m++ {
 					if align[v] == v {
 						u := upNeighbors[m]
 						if !typeOneSegments[[2]uint64{u, v}] && r < g.NodeYX[u][1] {
@@ -135,7 +204,7 @@ func verticalAlignment(g LayeredGraph, typeOneSegments map[[2]uint64]bool, n Nei
 }
 
 // part of Alg 3.
-func placeBlock(g LayeredGraph, x map[uint64]int, root map[uint64]uint64, align map[uint64]uint64, sink map[uint64]uint64, shift map[uint64]int, delta int, v uint64, layers [][]uint64) {
+func (s TopLeft) placeBlock(g LayeredGraph, x map[uint64]int, root map[uint64]uint64, align map[uint64]uint64, sink map[uint64]uint64, shift map[uint64]int, delta int, v uint64, layers [][]uint64) {
 	if _, ok := x[v]; !ok {
 		x[v] = 0
 		flag := true
@@ -143,7 +212,7 @@ func placeBlock(g LayeredGraph, x map[uint64]int, root map[uint64]uint64, align 
 		for ; flag; flag = v != w {
 			if g.NodeYX[w][1] > 0 {
 				u := root[layers[g.NodeYX[w][0]][g.NodeYX[w][1]-1]]
-				placeBlock(g, x, root, align, sink, shift, delta, u, layers)
+				s.placeBlock(g, x, root, align, sink, shift, delta, u, layers)
 				if sink[v] == v {
 					sink[v] = sink[u]
 				}
@@ -177,7 +246,7 @@ func placeBlock(g LayeredGraph, x map[uint64]int, root map[uint64]uint64, align 
 // the preceding blocks in the same class, plus minimum separation.
 // For each class, from top to bottom, we then compute the absolute coordinates
 // of its members by placing the class with minimum separation from previously placed classes.
-func horizontalCompaction(g LayeredGraph, root map[uint64]uint64, align map[uint64]uint64, delta int) (x map[uint64]int) {
+func (s TopLeft) horizontalCompaction(g LayeredGraph, root map[uint64]uint64, align map[uint64]uint64, delta int) (x map[uint64]int) {
 	sink := map[uint64]uint64{}
 	shift := map[uint64]int{}
 	x = map[uint64]int{}
@@ -191,7 +260,7 @@ func horizontalCompaction(g LayeredGraph, root map[uint64]uint64, align map[uint
 	// root coordinates relative to sink
 	for v := range g.NodeYX {
 		if root[v] == v {
-			placeBlock(g, x, root, align, sink, shift, delta, v, layers)
+			s.placeBlock(g, x, root, align, sink, shift, delta, v, layers)
 		}
 	}
 
@@ -230,7 +299,436 @@ func horizontalCompaction(g LayeredGraph, root map[uint64]uint64, align map[uint
 
 	// absolute coordinates
 	for v := range g.NodeYX {
-		x[v]+= shift[sink[v]]
+		x[v] += shift[sink[v]]
+	}
+
+	return x
+}
+
+type TopRight struct{}
+
+// Alg 2.
+// Obtain a rightmost alignment with upper neighbors.
+// A maximal set of vertically aligned vertices is called a block, and we define the root of a block to be its topmost vertex.
+// Blocks are stored as cyclicly linked lists, each node has reference to its lower aligned neighbor and lowest refers to topmost.
+// Each node has additional reference to root of its block.
+func (s TopRight) verticalAlignment(g LayeredGraph, typeOneSegments map[[2]uint64]bool, n Neighbors) (root map[uint64]uint64, align map[uint64]uint64) {
+	root = make(map[uint64]uint64, len(g.NodeYX))
+	align = make(map[uint64]uint64, len(g.NodeYX))
+
+	for v := range g.NodeYX {
+		root[v] = v
+		align[v] = v
+	}
+
+	layers := g.Layers()
+	for i := range layers {
+		r := math.MaxInt
+		for j := len(layers[i]) - 1; j >= 0; j-- {
+			v := layers[i][j]
+			upNeighbors := n.Up[v]
+			if d := len(upNeighbors); d > 0 {
+				for m := ((d + 1) / 2) - 1; m >= d/2; m-- {
+					if align[v] == v {
+						u := upNeighbors[m]
+						if !typeOneSegments[[2]uint64{u, v}] && r > g.NodeYX[u][1] {
+							align[u] = v
+							root[v] = root[u]
+							align[v] = root[v]
+							r = g.NodeYX[u][1]
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return root, align
+}
+
+// part of Alg 3.
+func (s TopRight) placeBlock(g LayeredGraph, x map[uint64]int, root map[uint64]uint64, align map[uint64]uint64, sink map[uint64]uint64, shift map[uint64]int, delta int, v uint64, layers [][]uint64) {
+	if _, ok := x[v]; !ok {
+		x[v] = 0
+		flag := true
+		w := v
+		for ; flag; flag = v != w {
+			if g.NodeYX[w][1] < len(layers[g.NodeYX[w][0]])-1 {
+				u := root[layers[g.NodeYX[w][0]][g.NodeYX[w][1]+1]]
+				s.placeBlock(g, x, root, align, sink, shift, delta, u, layers)
+				if sink[v] == v {
+					sink[v] = sink[u]
+				}
+				if sink[v] != sink[u] {
+					if s := x[v] + x[u] + delta; s > shift[sink[u]] {
+						shift[sink[u]] = s
+					}
+				} else {
+					if s := x[u] - delta; s < x[v] {
+						x[v] = s
+					}
+				}
+			}
+			w = align[w]
+		}
+		for align[w] != v {
+			w = align[w]
+			x[w] = x[v]
+			sink[w] = sink[v]
+		}
+	}
+}
+
+// Alg 3.
+// All node of a block are assigned the coordinate of the root.
+// Partition each block in to classes.
+// Class is defined by reachable sink which has the topmost root
+// Within each class, we apply a longest path layering,
+// i.e. the relative coordinate of a block with respect to the defining
+// sink is recursively determined to be the maximum coordinate of
+// the preceding blocks in the same class, plus minimum separation.
+// For each class, from top to bottom, we then compute the absolute coordinates
+// of its members by placing the class with minimum separation from previously placed classes.
+func (s TopRight) horizontalCompaction(g LayeredGraph, root map[uint64]uint64, align map[uint64]uint64, delta int) (x map[uint64]int) {
+	sink := map[uint64]uint64{}
+	shift := map[uint64]int{}
+	x = map[uint64]int{}
+
+	for v := range g.NodeYX {
+		sink[v] = v
+		shift[v] = math.MinInt
+	}
+
+	layers := g.Layers()
+	// root coordinates relative to sink
+	for v := range g.NodeYX {
+		if root[v] == v {
+			s.placeBlock(g, x, root, align, sink, shift, delta, v, layers)
+		}
+	}
+
+	// class offsets
+	for i := 0; i < len(layers); i++ {
+		layer := layers[i]
+		vfirst := layer[len(layer)-1]
+		if sink[vfirst] == vfirst {
+			if shift[sink[vfirst]] == math.MinInt {
+				shift[sink[vfirst]] = 0
+			}
+			j := i
+			k := len(layers[j]) - 1
+			for {
+				v := layers[j][k]
+
+				for align[v] != root[v] {
+					v = align[v]
+					j++
+					if g.NodeYX[v][1] < len(layers[j])-1 {
+						u := layers[g.NodeYX[v][0]][g.NodeYX[v][1]+1]
+						shifted := shift[sink[v]] + x[v] - (x[u] - delta)
+						if shifted > shift[sink[u]] {
+							shift[sink[u]] = shifted
+						}
+					}
+				}
+				k = g.NodeYX[v][1] - 1
+
+				if k < 0 || sink[v] != sink[layers[j][k]] {
+					break
+				}
+			}
+		}
+	}
+
+	// absolute coordinates
+	for v := range g.NodeYX {
+		x[v] += shift[sink[v]]
+	}
+
+	return x
+}
+
+type BottomLeft struct{}
+
+// Alg 2.
+// Obtain a leftmost alignment with lower neighbors.
+// A maximal set of vertically aligned vertices is called a block, and we define the root of a block to be its topmost vertex.
+// Blocks are stored as cyclicly linked lists, each node has reference to its lower aligned neighbor and lowest refers to topmost.
+// Each node has additional reference to root of its block.
+func (s BottomLeft) verticalAlignment(g LayeredGraph, typeOneSegments map[[2]uint64]bool, n Neighbors) (root map[uint64]uint64, align map[uint64]uint64) {
+	root = make(map[uint64]uint64, len(g.NodeYX))
+	align = make(map[uint64]uint64, len(g.NodeYX))
+
+	for v := range g.NodeYX {
+		root[v] = v
+		align[v] = v
+	}
+
+	layers := g.Layers()
+	for ri := range layers {
+		i := len(layers) - ri - 1
+		r := -1
+		for _, v := range layers[i] {
+			downNeighbors := n.Down[v]
+			if d := len(downNeighbors); d > 0 {
+				for m := d / 2; m < ((d + 1) / 2); m++ {
+					if align[v] == v {
+						u := downNeighbors[m]
+						if !typeOneSegments[[2]uint64{u, v}] && r < g.NodeYX[u][1] {
+							align[u] = v
+							root[v] = root[u]
+							align[v] = root[v]
+							r = g.NodeYX[u][1]
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return root, align
+}
+
+// part of Alg 3.
+func (s BottomLeft) placeBlock(g LayeredGraph, x map[uint64]int, root map[uint64]uint64, align map[uint64]uint64, sink map[uint64]uint64, shift map[uint64]int, delta int, v uint64, layers [][]uint64) {
+	if _, ok := x[v]; !ok {
+		x[v] = 0
+		flag := true
+		w := v
+		for ; flag; flag = v != w {
+			if g.NodeYX[w][1] > 0 {
+				u := root[layers[g.NodeYX[w][0]][g.NodeYX[w][1]-1]]
+				s.placeBlock(g, x, root, align, sink, shift, delta, u, layers)
+				if sink[v] == v {
+					sink[v] = sink[u]
+				}
+				if sink[v] != sink[u] {
+					if s := x[v] - x[u] - delta; s < shift[sink[u]] {
+						shift[sink[u]] = s
+					}
+				} else {
+					if s := x[u] + delta; s > x[v] {
+						x[v] = s
+					}
+				}
+			}
+			w = align[w]
+		}
+		for align[w] != v {
+			w = align[w]
+			x[w] = x[v]
+			sink[w] = sink[v]
+		}
+	}
+}
+
+// Alg 3.
+// All node of a block are assigned the coordinate of the root.
+// Partition each block in to classes.
+// Class is defined by reachable sink which has the topmost root
+// Within each class, we apply a longest path layering,
+// i.e. the relative coordinate of a block with respect to the defining
+// sink is recursively determined to be the maximum coordinate of
+// the preceding blocks in the same class, plus minimum separation.
+// For each class, from top to bottom, we then compute the absolute coordinates
+// of its members by placing the class with minimum separation from previously placed classes.
+func (s BottomLeft) horizontalCompaction(g LayeredGraph, root map[uint64]uint64, align map[uint64]uint64, delta int) (x map[uint64]int) {
+	sink := map[uint64]uint64{}
+	shift := map[uint64]int{}
+	x = map[uint64]int{}
+
+	for v := range g.NodeYX {
+		sink[v] = v
+		shift[v] = math.MaxInt
+	}
+
+	layers := g.Layers()
+	// root coordinates relative to sink
+	for v := range g.NodeYX {
+		if root[v] == v {
+			s.placeBlock(g, x, root, align, sink, shift, delta, v, layers)
+		}
+	}
+
+	// class offsets
+	for i := len(layers) - 1; i >= 0; i-- {
+		layer := layers[i]
+		vfirst := layer[0]
+		if sink[vfirst] == vfirst {
+			if shift[sink[vfirst]] == math.MaxInt {
+				shift[sink[vfirst]] = 0
+			}
+			j := i
+			k := 0
+			for {
+				v := layers[j][k]
+
+				for align[v] != root[v] {
+					v = align[v]
+					j--
+					if g.NodeYX[v][1] > 0 {
+						u := layers[g.NodeYX[v][0]][g.NodeYX[v][1]-1]
+						shifted := shift[sink[v]] + x[v] - (x[u] + delta)
+						if shifted < shift[sink[u]] {
+							shift[sink[u]] = shifted
+						}
+					}
+				}
+				k = g.NodeYX[v][1] + 1
+
+				if k > len(layers[j])-1 || sink[v] != sink[layers[j][k]] {
+					break
+				}
+			}
+		}
+	}
+
+	// absolute coordinates
+	for v := range g.NodeYX {
+		x[v] += shift[sink[v]]
+	}
+
+	return x
+}
+
+type BottomRight struct{} // RIGHT UP in paper
+
+// Alg 2.
+// Obtain a rightmost alignment with lower neighbors.
+// A maximal set of vertically aligned vertices is called a block, and we define the root of a block to be its topmost vertex.
+// Blocks are stored as cyclicly linked lists, each node has reference to its lower aligned neighbor and lowest refers to topmost.
+// Each node has additional reference to root of its block.
+func (s BottomRight) verticalAlignment(g LayeredGraph, typeOneSegments map[[2]uint64]bool, n Neighbors) (root map[uint64]uint64, align map[uint64]uint64) {
+	root = make(map[uint64]uint64, len(g.NodeYX))
+	align = make(map[uint64]uint64, len(g.NodeYX))
+
+	for v := range g.NodeYX {
+		root[v] = v
+		align[v] = v
+	}
+
+	layers := g.Layers()
+	for i := len(layers) - 1; i >= 0; i-- {
+		r := math.MaxInt
+		for j := len(layers[i]) - 1; j >= 0; j-- {
+			v := layers[i][j]
+			downNeighbors := n.Down[v]
+			if d := len(downNeighbors); d > 0 {
+				for m := ((d + 1) / 2) - 1; m >= d/2; m-- {
+					if align[v] == v {
+						u := downNeighbors[m]
+						if !typeOneSegments[[2]uint64{u, v}] && r > g.NodeYX[u][1] {
+							align[u] = v
+							root[v] = root[u]
+							align[v] = root[v]
+							r = g.NodeYX[u][1]
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return root, align
+}
+
+// part of Alg 3.
+func (s BottomRight) placeBlock(g LayeredGraph, x map[uint64]int, root map[uint64]uint64, align map[uint64]uint64, sink map[uint64]uint64, shift map[uint64]int, delta int, v uint64, layers [][]uint64) {
+	if _, ok := x[v]; !ok {
+		x[v] = 0
+		flag := true
+		w := v
+		for ; flag; flag = v != w {
+			if g.NodeYX[w][1] < len(layers[g.NodeYX[w][0]])-1 {
+				u := root[layers[g.NodeYX[w][0]][g.NodeYX[w][1]+1]]
+				s.placeBlock(g, x, root, align, sink, shift, delta, u, layers)
+				if sink[v] == v {
+					sink[v] = sink[u]
+				}
+				if sink[v] != sink[u] {
+					if s := x[v] + x[u] + delta; s > shift[sink[u]] {
+						shift[sink[u]] = s
+					}
+				} else {
+					if s := x[u] - delta; s < x[v] {
+						x[v] = s
+					}
+				}
+			}
+			w = align[w]
+		}
+		for align[w] != v {
+			w = align[w]
+			x[w] = x[v]
+			sink[w] = sink[v]
+		}
+	}
+}
+
+// Alg 3.
+// All node of a block are assigned the coordinate of the root.
+// Partition each block in to classes.
+// Class is defined by reachable sink which has the topmost root
+// Within each class, we apply a longest path layering,
+// i.e. the relative coordinate of a block with respect to the defining
+// sink is recursively determined to be the maximum coordinate of
+// the preceding blocks in the same class, plus minimum separation.
+// For each class, from top to bottom, we then compute the absolute coordinates
+// of its members by placing the class with minimum separation from previously placed classes.
+func (s BottomRight) horizontalCompaction(g LayeredGraph, root map[uint64]uint64, align map[uint64]uint64, delta int) (x map[uint64]int) {
+	sink := map[uint64]uint64{}
+	shift := map[uint64]int{}
+	x = map[uint64]int{}
+
+	for v := range g.NodeYX {
+		sink[v] = v
+		shift[v] = math.MinInt
+	}
+
+	layers := g.Layers()
+	// root coordinates relative to sink
+	for v := range g.NodeYX {
+		if root[v] == v {
+			s.placeBlock(g, x, root, align, sink, shift, delta, v, layers)
+		}
+	}
+
+	// class offsets
+	for i := len(layers) - 1; i >= 0; i-- {
+		layer := layers[i]
+		vfirst := layer[len(layer)-1]
+		if sink[vfirst] == vfirst {
+			if shift[sink[vfirst]] == math.MinInt {
+				shift[sink[vfirst]] = 0
+			}
+			j := i
+			k := len(layers[j]) - 1
+			for {
+				v := layers[j][k]
+
+				for align[v] != root[v] {
+					v = align[v]
+					j--
+					if g.NodeYX[v][1] < len(layers[j])-1 {
+						u := layers[g.NodeYX[v][0]][g.NodeYX[v][1]+1]
+						shifted := shift[sink[v]] + x[v] - (x[u] - delta)
+						if shifted > shift[sink[u]] {
+							shift[sink[u]] = shifted
+						}
+					}
+				}
+				k = g.NodeYX[v][1] - 1
+
+				if k < 0 || sink[v] != sink[layers[j][k]] {
+					break
+				}
+			}
+		}
+	}
+
+	// absolute coordinates
+	for v := range g.NodeYX {
+		x[v] += shift[sink[v]]
 	}
 
 	return x
