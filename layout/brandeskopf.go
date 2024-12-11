@@ -185,7 +185,7 @@ func (s TopLeft) verticalAlignment(g LayeredGraph, typeOneSegments map[[2]uint64
 		for _, v := range layers[i] {
 			upNeighbors := n.Up[v]
 			if d := len(upNeighbors); d > 0 {
-				for m := d / 2; m < ((d + 1) / 2); m++ {
+				for m := (d - 1) / 2; m <= (d+1)/2 && m < len(upNeighbors); m++ {
 					if align[v] == v {
 						u := upNeighbors[m]
 						if !typeOneSegments[[2]uint64{u, v}] && r < g.NodeYX[u][1] {
@@ -328,7 +328,11 @@ func (s TopRight) verticalAlignment(g LayeredGraph, typeOneSegments map[[2]uint6
 			v := layers[i][j]
 			upNeighbors := n.Up[v]
 			if d := len(upNeighbors); d > 0 {
-				for m := ((d + 1) / 2) - 1; m >= d/2; m-- {
+				first := (d + 1) / 2
+				if first >= d {
+					first = d - 1
+				}
+				for m := first; m >= (d-1)/2; m-- {
 					if align[v] == v {
 						u := upNeighbors[m]
 						if !typeOneSegments[[2]uint64{u, v}] && r > g.NodeYX[u][1] {
@@ -471,10 +475,10 @@ func (s BottomLeft) verticalAlignment(g LayeredGraph, typeOneSegments map[[2]uin
 		for _, v := range layers[i] {
 			downNeighbors := n.Down[v]
 			if d := len(downNeighbors); d > 0 {
-				for m := d / 2; m < ((d + 1) / 2); m++ {
+				for m := (d - 1) / 2; m <= (d+1)/2 && m < len(downNeighbors); m++ {
 					if align[v] == v {
 						u := downNeighbors[m]
-						if !typeOneSegments[[2]uint64{u, v}] && r < g.NodeYX[u][1] {
+						if !typeOneSegments[[2]uint64{v, u}] && r < g.NodeYX[u][1] {
 							align[u] = v
 							root[v] = root[u]
 							align[v] = root[v]
@@ -614,10 +618,14 @@ func (s BottomRight) verticalAlignment(g LayeredGraph, typeOneSegments map[[2]ui
 			v := layers[i][j]
 			downNeighbors := n.Down[v]
 			if d := len(downNeighbors); d > 0 {
-				for m := ((d + 1) / 2) - 1; m >= d/2; m-- {
+				first := (d + 1) / 2
+				if first >= d {
+					first = d - 1
+				}
+				for m := first; m >= (d-1)/2; m-- {
 					if align[v] == v {
 						u := downNeighbors[m]
-						if !typeOneSegments[[2]uint64{u, v}] && r > g.NodeYX[u][1] {
+						if !typeOneSegments[[2]uint64{v, u}] && r > g.NodeYX[u][1] {
 							align[u] = v
 							root[v] = root[u]
 							align[v] = root[v]
